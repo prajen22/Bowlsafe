@@ -1,22 +1,29 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
-from app.database import get_db
-from app import models, schema
+from datetime import date, timedelta
+from sqlalchemy import func
 
-from app.models import Progress
-from app.schema import ProgressCreate
-from sqlalchemy.orm import Session
-from fastapi import Depends
-
+from database import get_db
+import models
+import schema
 
 app = FastAPI()
 
+
+# -------------------- LOGIN --------------------
 @app.post("/login", response_model=schema.LoginResponse)
-def login(data: schema.LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(
-        models.User.email == data.email,
-        models.User.password == data.password
-    ).first()
+def login(
+    data: schema.LoginRequest,
+    db: Session = Depends(get_db)
+):
+    user = (
+        db.query(models.User)
+        .filter(
+            models.User.email == data.email,
+            models.User.password == data.password
+        )
+        .first()
+    )
 
     if not user:
         return {"success": False, "message": "Invalid credentials"}
@@ -24,6 +31,7 @@ def login(data: schema.LoginRequest, db: Session = Depends(get_db)):
     return {"success": True, "message": "Login successful"}
 
 
+# -------------------- CREATE PROGRESS --------------------
 @app.post("/progress")
 def create_progress(
     progress: schema.ProgressCreate,
@@ -46,13 +54,22 @@ def create_progress(
     return {"message": "Progress saved successfully"}
 
 
-from datetime import date, timedelta
-from sqlalchemy import func
+# -------------------- GET ALL PROGRESS --------------------
+@app.get("/progress")
+def get_progress(db: Session = Depends(get_db)):
+    return (
+        db.query(models.Progress)
+        .order_by(models.Progress.date)
+        .all()
+    )
 
+
+# -------------------- WEEKLY STATS --------------------
 @app.get("/weekly-stats")
 def weekly_stats(db: Session = Depends(get_db)):
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
+
     last_week_start = week_start - timedelta(days=7)
     last_week_end = week_start - timedelta(days=1)
 
@@ -67,7 +84,7 @@ def weekly_stats(db: Session = Depends(get_db)):
         db.query(func.sum(models.Progress.overs))
         .filter(
             models.Progress.date >= last_week_start,
-            models.Progress.date <= last_week_end,
+            models.Progress.date <= last_week_end
         )
         .scalar()
         or 0
@@ -87,15 +104,9 @@ def weekly_stats(db: Session = Depends(get_db)):
         risk = "Risk"
 
     return {
-        "week_start": week_start,
+        "week_start": str(week_start),
         "this_week_overs": this_week_overs,
         "last_week_overs": last_week_overs,
         "percent_change": round(percent_change, 2),
         "risk_level": risk,
     }
-
-
-@app.get("/progress")
-def get_progress(db: Session = Depends(get_db)):
-    return db.query(Progress).order_by(Progress.date).all()
-
